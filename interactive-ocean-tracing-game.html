@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ocean Path Tracing Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+            font-family: Arial, sans-serif;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            cursor: pointer;
+        }
+        
+        #ocean {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 60%;
+            background-color: #1E90FF;
+            z-index: 0;
+        }
+        
+        .wave {
+            position: absolute;
+            width: 100%;
+            height: 20px;
+            background: transparent;
+            z-index: 1;
+        }
+        
+        .fish {
+            position: absolute;
+            z-index: 2;
+            pointer-events: none;
+        }
+        
+        .seaweed {
+            position: absolute;
+            bottom: 0;
+            z-index: 1;
+        }
+        
+        .bubble {
+            position: absolute;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.6);
+            z-index: 2;
+            pointer-events: none;
+            animation: bubble 10s infinite ease-in;
+        }
+        
+        @keyframes bubble {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-100px); }
+        }
+        
+        #startPoint, #endPoint {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            line-height: 40px;
+            z-index: 3;
+        }
+        
+        #startPoint {
+            background-color: #4CAF50;
+            left: 50px;
+            top: 50%;
+        }
+        
+        #endPoint {
+            background-color: #F44336;
+            right: 50px;
+            top: 50%;
+        }
+        
+        #userPath {
+            position: absolute;
+            z-index: 5;
+            pointer-events: none;
+        }
+        
+        #message {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            padding: 10px;
+            color: #333;
+            font-size: 18px;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 5px;
+            width: 80%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        #resetBtn {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            padding: 10px 20px;
+            background-color: #FF9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        #resetBtn:hover {
+            background-color: #F57C00;
+        }
+        
+        .sun {
+            position: absolute;
+            top: 50px;
+            right: 100px;
+            width: 60px;
+            height: 60px;
+            background-color: #FFD700;
+            border-radius: 50%;
+            box-shadow: 0 0 20px #FFD700;
+            z-index: 0;
+        }
+        
+        .cloud {
+            position: absolute;
+            background-color: white;
+            border-radius: 50px;
+            z-index: 0;
+        }
+        
+        .starfish {
+            position: absolute;
+            z-index: 2;
+            pointer-events: none;
+        }
+        
+        .jellyfish {
+            position: absolute;
+            z-index: 2;
+            pointer-events: none;
+            animation: float 8s infinite ease-in-out;
+        }
+        
+        @keyframes float {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div class="sun"></div>
+        <div id="ocean"></div>
+        <div id="startPoint">START</div>
+        <div id="endPoint">END</div>
+        <canvas id="userPath" width="1000" height="1000"></canvas>
+        <div id="message">Trace a path from START to END without lifting your finger/mouse!</div>
+        <button id="resetBtn">Reset Path</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const gameContainer = document.getElementById('gameContainer');
+            const ocean = document.getElementById('ocean');
+            const startPoint = document.getElementById('startPoint');
+            const endPoint = document.getElementById('endPoint');
+            const message = document.getElementById('message');
+            const resetBtn = document.getElementById('resetBtn');
+            const canvas = document.getElementById('userPath');
+            const ctx = canvas.getContext('2d');
+            
+            let isDrawing = false;
+            let pathStarted = false;
+            let pathCompleted = false;
+            let successMessage = false;
+            
+            // Fish colors
+            const fishColors = [
+                '#FF7F50', // Coral
+                '#DAA520', // GoldenRod
+                '#9370DB', // MediumPurple
+                '#4682B4', // SteelBlue
+                '#FF6347', // Tomato
+                '#20B2AA', // LightSeaGreen
+                '#7B68EE', // MediumSlateBlue
+                '#FA8072', // Salmon
+                '#FF69B4', // HotPink
+                '#00CED1', // DarkTurquoise
+                '#32CD32', // LimeGreen
+                '#FFD700', // Gold
+                '#FFA07A', // LightSalmon
+                '#87CEFA', // LightSkyBlue
+                '#9932CC'  // DarkOrchid
+            ];
+            
+            // Adjust canvas size
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+            
+            // Create waves
+            for (let i = 0; i < 3; i++) {
+                const wave = document.createElement('div');
+                wave.className = 'wave';
+                wave.style.bottom = (ocean.offsetHeight - (i * 40)) + 'px';
+                gameContainer.appendChild(wave);
+            }
+            
+            // Create fish
+            function createFish(x, y, color, size, direction) {
+                const fish = document.createElement('div');
+                fish.className = 'fish';
+                fish.style.left = x + 'px';
+                fish.style.top = y + 'px';
+                
+                const fishSvg = `
+                    <svg width="${size * 2}" height="${size}" viewBox="0 0 50 25" xmlns="http://www.w3.org/2000/svg">
+                        <g transform="scale(${direction}, 1)">
+                            <path d="M0 12.5 L 15 25 L 15 0 Z" fill="${color}"/>
+                            <ellipse cx="25" cy="12.5" rx="25" ry="12.5" fill="${color}"/>
+                            <circle cx="40" cy="12.5" r="2" fill="black"/>
+                        </g>
+                    </svg>
+                `;
+                
+                fish.innerHTML = fishSvg;
+                gameContainer.appendChild(fish);
+                
+                // Animate fish
+                let pos = parseInt(x);
+                const speed = Math.random() * 1 + 0.5;
+                setInterval(() => {
+                    pos += speed * direction;
+                    if ((direction > 0 && pos > window.innerWidth + 100) || 
+                        (direction < 0 && pos < -100)) {
+                        pos = direction > 0 ? -100 : window.innerWidth + 100;
+                    }
+                    fish.style.left = pos + 'px';
+                }, 30);
+            }
+            
+            // Create tropical fish (different shape)
+            function createTropicalFish(x, y, color, size, direction) {
+                const fish = document.createElement('div');
+                fish.className = 'fish';
+                fish.style.left = x + 'px';
+                fish.style.top = y + 'px';
+                
+                const fishSvg = `
+                    <svg width="${size * 2}" height="${size * 1.2}" viewBox="0 0 60 30" xmlns="http://www.w3.org/2000/svg">
+                        <g transform="scale(${direction}, 1)">
+                            <path d="M5 15 L 15 30 L 15 0 Z" fill="${color}"/>
+                            <ellipse cx="30" cy="15" rx="25" ry="15" fill="${color}"/>
+                            <circle cx="45" cy="15" r="2" fill="black"/>
+                            <path d="M10 15 L 30 5 L 30 25 Z" fill="${direction > 0 ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.2)'}"/>
+                            <path d="M55 5 L 40 15 L 55 25 Z" fill="${color}"/>
+                        </g>
+                    </svg>
+                `;
+                
+                fish.innerHTML = fishSvg;
+                gameContainer.appendChild(fish);
+                
+                // Animate fish
+                let pos = parseInt(x);
+                const speed = Math.random() * 1.2 + 0.8;
+                let vOffset = 0;
+                const vSpeed = Math.random() * 0.5 + 0.2;
+                let vDirection = 1;
+                
+                setInterval(() => {
+                    pos += speed * direction;
+                    if ((direction > 0 && pos > window.innerWidth + 100) || 
+                        (direction < 0 && pos < -100)) {
+                        pos = direction > 0 ? -100 : window.innerWidth + 100;
+                    }
+                    
+                    // Add some vertical movement
+                    vOffset += vSpeed * vDirection;
+                    if (Math.abs(vOffset) > 20) {
+                        vDirection *= -1;
+                    }
+                    
+                    fish.style.left = pos + 'px';
+                    fish.style.top = (y + vOffset) + 'px';
+                }, 30);
+            }
+            
+            // Create pufferfish
+            function createPufferfish(x, y, size) {
+                const fish = document.createElement('div');
+                fish.className = 'fish';
+                fish.style.left = x + 'px';
+                fish.style.top = y + 'px';
+                
+                const fishSvg = `
+                    <svg width="${size}" height="${size}" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="20" cy="20" r="18" fill="#FFD700"/>
+                        <circle cx="15" cy="15" r="2" fill="black"/>
+                        <path d="M23 22 C 25 24, 28 24, 30 22" stroke="black" stroke-width="1" fill="none"/>
+                        <!-- Spikes -->
+                        <line x1="2" y1="20" x2="10" y2="20" stroke="#B8860B" stroke-width="2"/>
+                        <line x1="30" y1="20" x2="38" y2="20" stroke="#B8860B" stroke-width="2"/>
+                        <line x1="20" y1="2" x2="20" y2="10" stroke="#B8860B" stroke-width="2"/>
+                        <line x1="20" y1="30" x2="20" y2="38" stroke="#B8860B" stroke-width="2"/>
+                        <line x1="7" y1="7" x2="13" y2="13" stroke="#B8860B" stroke-width="2"/>
+                        <line x1="27" y1="7" x2="33" y2="13" stroke="#B8860B" stroke-width="2"/>
+                        <line x1="7" y1="33" x2="13" y2="27" stroke="#B8860B" stroke-width="2"/>
+                        <line x1="27" y1="33" x2="33" y2="27" stroke="#B8860B" stroke-width="2"/>
+                    </svg>
+                `;
+                
+                fish.innerHTML = fishSvg;
+                gameContainer.appendChild(fish);
+                
+                // Animate fish with floating motion
+                let vOffset = 0;
+                const vSpeed = Math.random() * 0.3 + 0.1;
+                let vDirection = 1;
+                let hOffset = 0;
+                const hSpeed = Math.random() * 0.3 + 0.1;
+                let hDirection = 1;
+                
+                setInterval(() => {
+                    // Vertical movement
+                    vOffset += vSpeed * vDirection;
+                    if (Math.abs(vOffset) > 15) {
+                        vDirection *= -1;
+                    }
+                    
+                    // Horizontal movement
+                    hOffset += hSpeed * hDirection;
+                    if (Math.abs(hOffset) > 15) {
+                        hDirection *= -1;
+                    }
+                    
+                    fish.style.left = (parseInt(x) + hOffset) + 'px';
+                    fish.style.top = (y + vOffset) + 'px';
+                }, 30);
+            }
+            
+            // Create jellyfish
+            function createJellyfish(x, y, color, size) {
+                const jellyfish = document.createElement('div');
+                jellyfish.className = 'jellyfish';
+                jellyfish.style.left = x + 'px';
+                jellyfish.style.top = y + 'px';
+                
+                const jellyfishSvg = `
+                    <svg width="${size}" height="${size * 1.5}" viewBox="0 0 30 45" xmlns="http://www.w3.org/2000/svg">
+                        <ellipse cx="15" cy="15" rx="15" ry="15" fill="${color}" opacity="0.8"/>
+                        <path d="M5 15 Q 5 30, 8 45" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>
+                        <path d="M10 15 Q 10 35, 12 45" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>
+                        <path d="M15 15 Q 15 30, 15 45" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>
+                        <path d="M20 15 Q 20 35, 18 45" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>
+                        <path d="M25 15 Q 25 30, 22 45" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>
+                    </svg>
+                `;
+                
+                jellyfish.innerHTML = jellyfishSvg;
+                gameContainer.appendChild(jellyfish);
+                
+                // Make jellyfish slowly move upward
+                let pos = parseInt(y);
+                const speed = Math.random() * 0.3 + 0.1;
+                
+                setInterval(() => {
+                    pos -= speed;
+                    if (pos < -100) {
+                        pos = window.innerHeight + 50;
+                    }
+                    jellyfish.style.top = pos + 'px';
+                }, 30);
+            }
+            
+            // Create starfish
+            function createStarfish(x, y, color, size, rotation) {
+                const starfish = document.createElement('div');
+                starfish.className = 'starfish';
+                starfish.style.left = x + 'px';
+                starfish.style.top = y + 'px';
+                
+                const starfishSvg = `
+                    <svg width="${size}" height="${size}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M50 0 L63 38 L100 38 L69 60 L81 100 L50 75 L19 100 L31 60 L0 38 L37 38 Z" 
+                             fill="${color}" transform="rotate(${rotation} 50 50)"/>
+                    </svg>
+                `;
+                
+                starfish.innerHTML = starfishSvg;
+                gameContainer.appendChild(starfish);
+            }
+            
+            // Create seaweed
+            function createSeaweed(x, height) {
+                const seaweed = document.createElement('div');
+                seaweed.className = 'seaweed';
+                seaweed.style.left = x + 'px';
+                
+                const seaweedSvg = `
+                    <svg width="30" height="${height}" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M15 ${height} C 25 ${height*0.8}, 5 ${height*0.6}, 15 ${height*0.4} C 25 ${height*0.2}, 5 0, 15 0" 
+                              stroke="#2E8B57" stroke-width="3" fill="none"/>
+                    </svg>
+                `;
+                
+                seaweed.innerHTML = seaweedSvg;
+                gameContainer.appendChild(seaweed);
+            }
+            
+            // Create bubbles
+            function createBubble(x, y) {
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble';
+                bubble.style.left = x + 'px';
+                bubble.style.bottom = y + 'px';
+                const size = Math.random() * 10 + 5;
+                bubble.style.width = size + 'px';
+                bubble.style.height = size + 'px';
+                bubble.style.animationDuration = (Math.random() * 10 + 5) + 's';
+                gameContainer.appendChild(bubble);
+                
+                // Remove bubble after animation
+                setTimeout(() => {
+                    bubble.remove();
+                }, 15000);
+            }
+            
+            // Create clouds
+            function createCloud(x, y, width, height) {
+                const cloud = document.createElement('div');
+                cloud.className = 'cloud';
+                cloud.style.left = x + 'px';
+                cloud.style.top = y + 'px';
+                cloud.style.width = width + 'px';
+                cloud.style.height = height + 'px';
+                gameContainer.appendChild(cloud);
+                
+                // Animate cloud
+                let pos = parseInt(x);
+                const speed = Math.random() * 0.2 + 0.1;
+                setInterval(() => {
+                    pos += speed;
+                    if (pos > window.innerWidth + width) {
+                        pos = -width;
+                    }
+                    cloud.style.left = pos + 'px';
+                }, 30);
+            }
+            
+            // Initialize game elements
+            function initGame() {
+                // Position start and end points
+                const oceanTop = window.innerHeight * 0.4;
+                const oceanHeight = window.innerHeight * 0.6;
+                const pointY = oceanTop + (oceanHeight * 0.3);
+                
+                startPoint.style.top = pointY + 'px';
+                endPoint.style.top = pointY + 'px';
+                
+                // Create lots of fish
+                // Regular fish
+                for (let i = 0; i < 12; i++) {
+                    const x = Math.random() * window.innerWidth;
+                    const y = oceanTop + (Math.random() * oceanHeight * 0.9);
+                    const colorIndex = Math.floor(Math.random() * fishColors.length);
+                    const size = Math.random() * 20 + 15;
+                    const direction = Math.random() > 0.5 ? 1 : -1;
+                    createFish(x, y, fishColors[colorIndex], size, direction);
+                }
+                
+                // Tropical fish
+                for (let i = 0; i < 8; i++) {
+                    const x = Math.random() * window.innerWidth;
+                    const y = oceanTop + (Math.random() * oceanHeight * 0.8);
+                    const colorIndex = Math.floor(Math.random() * fishColors.length);
+                    const size = Math.random() * 18 + 12;
+                    const direction = Math.random() > 0.5 ? 1 : -1;
+                    createTropicalFish(x, y, fishColors[colorIndex], size, direction);
+                }
+                
+                // Pufferfish
+                for (let i = 0; i < 3; i++) {
+                    const x = Math.random() * (window.innerWidth - 100) + 50;
+                    const y = oceanTop + (Math.random() * oceanHeight * 0.7);
+                    const size = Math.random() * 15 + 25;
+                    createPufferfish(x, y, size);
+                }
+                
+                // Jellyfish
+                for (let i = 0; i < 4; i++) {
+                    const x = Math.random() * (window.innerWidth - 80) + 40;
+                    const y = oceanTop + (Math.random() * oceanHeight);
+                    const colorIndex = Math.floor(Math.random() * fishColors.length);
+                    const size = Math.random() * 20 + 30;
+                    createJellyfish(x, y, fishColors[colorIndex], size);
+                }
+                
+                // Starfish
+                for (let i = 0; i < 5; i++) {
+                    const x = Math.random() * (window.innerWidth - 60);
+                    const y = oceanTop + oceanHeight - 60;
+                    const colorIndex = Math.floor(Math.random() * fishColors.length);
+                    const size = Math.random() * 20 + 40;
+                    const rotation = Math.random() * 360;
+                    createStarfish(x, y, fishColors[colorIndex], size, rotation);
+                }
+                
+                // Create seaweed
+                for (let i = 0; i < 8; i++) {
+                    const x = Math.random() * window.innerWidth;
+                    const height = Math.random() * (oceanHeight * 0.4) + (oceanHeight * 0.3);
+                    createSeaweed(x, height);
+                }
+                
+                // Create clouds
+                for (let i = 0; i < 4; i++) {
+                    const x = Math.random() * window.innerWidth;
+                    const y = Math.random() * (oceanTop * 0.7);
+                    const width = Math.random() * 70 + 80;
+                    const height = Math.random() * 20 + 30;
+                    createCloud(x, y, width, height);
+                }
+                
+                // Create bubbles periodically
+                setInterval(() => {
+                    const x = Math.random() * window.innerWidth;
+                    const y = Math.random() * (oceanHeight * 0.8);
+                    createBubble(x, y);
+                }, 1000);
+            }
+            
+            // Drawing path
+            function startDrawing(e) {
+                if (pathCompleted) return;
+                
+                isDrawing = true;
+                const pos = getPosition(e);
+                
+                // Check if starting near start point
+                const startRect = startPoint.getBoundingClientRect();
+                const startCenterX = startRect.left + startRect.width / 2;
+                const startCenterY = startRect.top + startRect.height / 2;
+                
+                const distance = Math.sqrt(
+                    Math.pow(pos.x - startCenterX, 2) + 
+                    Math.pow(pos.y - startCenterY, 2)
+                );
+                
+                if (!pathStarted && distance < 30) {
+                    pathStarted = true;
+                    ctx.beginPath();
+                    ctx.moveTo(pos.x, pos.y);
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 4;
+                    message.textContent = "Keep going! Reach the END point!";
+                } else if (!pathStarted) {
+                    message.textContent = "Start from the START point!";
+                }
+            }
+            
+            function draw(e) {
+                if (!isDrawing || !pathStarted || pathCompleted) return;
+                
+                const pos = getPosition(e);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+                
+                // Check if reached end point
+                const endRect = endPoint.getBoundingClientRect();
+                const endCenterX = endRect.left + endRect.width / 2;
+                const endCenterY = endRect.top + endRect.height / 2;
+                
+                const distance = Math.sqrt(
+                    Math.pow(pos.x - endCenterX, 2) + 
+                    Math.pow(pos.y - endCenterY, 2)
+                );
+                
+                if (distance < 30 && !successMessage) {
+                    pathCompleted = true;
+                    successMessage = true;
+                    message.textContent = "Great job! You've completed the path!";
+                    message.style.backgroundColor = "#4CAF50";
+                    message.style.color = "white";
+                }
+            }
+            
+            function stopDrawing() {
+                isDrawing = false;
+                
+                if (pathStarted && !pathCompleted) {
+                    message.textContent = "Oops! You lifted your finger/mouse. Try again!";
+                    message.style.backgroundColor = "#F44336";
+                    message.style.color = "white";
+                }
+            }
+            
+            function getPosition(e) {
+                let x, y;
+                
+                if (e.type.includes('touch')) {
+                    x = e.touches[0].clientX;
+                    y = e.touches[0].clientY;
+                } else {
+                    x = e.clientX;
+                    y = e.clientY;
+                }
+                
+                return { x, y };
+            }
+            
+            function resetPath() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                pathStarted = false;
+                pathCompleted = false;
+                successMessage = false;
+                message.textContent = "Trace a path from START to END without lifting your finger/mouse!";
+                message.style.backgroundColor = "rgba(255, 255, 255, 0.7)";
+                message.style.color = "#333";
+            }
+            
+            // Event listeners
+            gameContainer.addEventListener('mousedown', startDrawing);
+            gameContainer.addEventListener('mousemove', draw);
+            window.addEventListener('mouseup', stopDrawing);
+            
+            gameContainer.addEventListener('touchstart', startDrawing);
+            gameContainer.addEventListener('touchmove', draw);
+            window.addEventListener('touchend', stopDrawing);
+            
+            resetBtn.addEventListener('click', resetPath);
+            
+            // Initialize game
+            initGame();
+        });
+    </script>
+</body>
+</html>
